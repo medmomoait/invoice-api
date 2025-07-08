@@ -1,0 +1,4 @@
+Flask==2.3.3
+reportlab==4.1.0
+python-dotenv==1.0.1
+stripe==9.3.0
