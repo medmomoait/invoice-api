@@ -7,23 +7,26 @@ from reportlab.lib.pagesizes import A4
 from dotenv import load_dotenv
 import stripe
 
-# Load .env variables
+# Load environment variables from .env file
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 app = Flask(__name__)
+
 PDF_FOLDER = 'invoices'
 KEY_FILE = 'keys.json'
 os.makedirs(PDF_FOLDER, exist_ok=True)
 
-# Create keys.json if it doesn't exist
+# Initialize keys.json if it doesn't exist
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'w') as f:
         json.dump([], f)
 
+# Generate a new API key
 def generate_api_key():
     return str(uuid.uuid4())
 
+# Save new API key to keys.json
 def save_api_key(new_key):
     with open(KEY_FILE, 'r') as f:
         keys = json.load(f)
@@ -31,17 +34,22 @@ def save_api_key(new_key):
     with open(KEY_FILE, 'w') as f:
         json.dump(keys, f)
 
+# Check if API key is valid
 def is_valid_key(key):
     with open(KEY_FILE, 'r') as f:
         keys = json.load(f)
     return key in keys
 
-# Health check route
+# ------------------------
+# Health Check Route
+# ------------------------
 @app.route('/health')
 def health():
     return "✅ API is running!"
 
-# Generate invoice (protected)
+# ------------------------
+# Generate Invoice (Protected)
+# ------------------------
 @app.route('/generate-invoice', methods=['POST'])
 def generate_invoice():
     api_key = request.headers.get('x-api-key')
@@ -52,7 +60,6 @@ def generate_invoice():
     invoice_id = str(uuid.uuid4())
     filename = os.path.join(PDF_FOLDER, f"{invoice_id}.pdf")
 
-    # Generate PDF invoice
     c = canvas.Canvas(filename, pagesize=A4)
     c.drawString(100, 800, f"Invoice #: {data['invoice_number']}")
     c.drawString(100, 780, f"Client: {data['client_name']}")
@@ -75,7 +82,9 @@ def generate_invoice():
         'pdf_url': f"/invoice/{invoice_id}"
     })
 
-# Get invoice PDF
+# ------------------------
+# Download Invoice PDF
+# ------------------------
 @app.route('/invoice/<invoice_id>', methods=['GET'])
 def get_invoice(invoice_id):
     filepath = os.path.join(PDF_FOLDER, f"{invoice_id}.pdf")
@@ -83,7 +92,9 @@ def get_invoice(invoice_id):
         return send_file(filepath, as_attachment=True)
     return jsonify({'error': 'Invoice not found'}), 404
 
-# Create Stripe checkout session
+# ------------------------
+# Create Stripe Checkout Session
+# ------------------------
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
@@ -94,7 +105,7 @@ def create_checkout_session():
                 'price_data': {
                     'currency': 'usd',
                     'product_data': {'name': 'Invoice API Access'},
-                    'unit_amount': 100  # $1 in cents
+                    'unit_amount': 100  # $1.00
                 },
                 'quantity': 1
             }],
@@ -105,7 +116,9 @@ def create_checkout_session():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-# Success route - generate and show API key
+# ------------------------
+# Success Route: Generate API Key
+# ------------------------
 @app.route('/success')
 def success():
     new_key = generate_api_key()
@@ -114,17 +127,21 @@ def success():
     ✅ Payment successful!<br><br>
     Your API key is:<br><br>
     <b>{new_key}</b><br><br>
-    Save this key! You’ll need it to call <code>/generate-invoice</code><br>
-    Include it in your headers like this:<br>
+    Save this key! You’ll need it to call <code>/generate-invoice</code>.<br>
+    Include it in your request header like this:<br>
     <code>x-api-key: {new_key}</code>
     """
 
+# ------------------------
+# Cancel Route
+# ------------------------
 @app.route('/cancel')
 def cancel():
     return "❌ Payment was cancelled."
 
-# Run app with proper host and port (for Render)
+# ------------------------
+# Start the Flask App
+# ------------------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    print(f"➡️ Go to http://localhost:{port}/success to test API key generation")
     app.run(host='0.0.0.0', port=port)
