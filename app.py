@@ -16,7 +16,7 @@ PDF_FOLDER = 'invoices'
 KEY_FILE = 'keys.json'
 os.makedirs(PDF_FOLDER, exist_ok=True)
 
-# Initialize keys file if it doesn't exist
+# Create keys.json if it doesn't exist
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'w') as f:
         json.dump([], f)
@@ -36,16 +36,12 @@ def is_valid_key(key):
         keys = json.load(f)
     return key in keys
 
-# ------------------------
-# Health Check
-# ------------------------
+# Health check route
 @app.route('/health')
 def health():
     return "✅ API is running!"
 
-# ------------------------
-# Generate Invoice (Protected)
-# ------------------------
+# Generate invoice (protected)
 @app.route('/generate-invoice', methods=['POST'])
 def generate_invoice():
     api_key = request.headers.get('x-api-key')
@@ -56,6 +52,7 @@ def generate_invoice():
     invoice_id = str(uuid.uuid4())
     filename = os.path.join(PDF_FOLDER, f"{invoice_id}.pdf")
 
+    # Generate PDF invoice
     c = canvas.Canvas(filename, pagesize=A4)
     c.drawString(100, 800, f"Invoice #: {data['invoice_number']}")
     c.drawString(100, 780, f"Client: {data['client_name']}")
@@ -78,9 +75,7 @@ def generate_invoice():
         'pdf_url': f"/invoice/{invoice_id}"
     })
 
-# ------------------------
-# Download Invoice PDF
-# ------------------------
+# Get invoice PDF
 @app.route('/invoice/<invoice_id>', methods=['GET'])
 def get_invoice(invoice_id):
     filepath = os.path.join(PDF_FOLDER, f"{invoice_id}.pdf")
@@ -88,9 +83,7 @@ def get_invoice(invoice_id):
         return send_file(filepath, as_attachment=True)
     return jsonify({'error': 'Invoice not found'}), 404
 
-# ------------------------
-# Stripe Checkout
-# ------------------------
+# Create Stripe checkout session
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
@@ -101,20 +94,18 @@ def create_checkout_session():
                 'price_data': {
                     'currency': 'usd',
                     'product_data': {'name': 'Invoice API Access'},
-                    'unit_amount': 100  # $1
+                    'unit_amount': 100  # $1 in cents
                 },
                 'quantity': 1
             }],
-            success_url='https://invoice-api-2.onrender.com/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://invoice-api-2.onrender.com/cancel'
+            success_url='https://invoice-api-3.onrender.com/success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url='https://invoice-api-3.onrender.com/cancel'
         )
         return jsonify({'checkout_url': session.url})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-# ------------------------
-# Success & Cancel Pages
-# ------------------------
+# Success route - generate and show API key
 @app.route('/success')
 def success():
     new_key = generate_api_key()
@@ -123,8 +114,8 @@ def success():
     ✅ Payment successful!<br><br>
     Your API key is:<br><br>
     <b>{new_key}</b><br><br>
-    Save this key! You’ll need it to call <code>/generate-invoice</code>.<br>
-    Include it in your header like this:<br>
+    Save this key! You’ll need it to call <code>/generate-invoice</code><br>
+    Include it in your headers like this:<br>
     <code>x-api-key: {new_key}</code>
     """
 
@@ -132,10 +123,8 @@ def success():
 def cancel():
     return "❌ Payment was cancelled."
 
-# ------------------------
-# Run the App for Render
-# ------------------------
+# Run app with proper host and port (for Render)
 if __name__ == '__main__':
-    print("➡️ API starting...")
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    print(f"➡️ Go to http://localhost:{port}/success to test API key generation")
+    app.run(host='0.0.0.0', port=port)
