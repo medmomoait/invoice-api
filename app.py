@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from dotenv import load_dotenv
 import stripe
 
-# Load .env
+# Load .env variables
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
@@ -16,6 +16,7 @@ PDF_FOLDER = 'invoices'
 KEY_FILE = 'keys.json'
 os.makedirs(PDF_FOLDER, exist_ok=True)
 
+# Initialize keys file if it doesn't exist
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'w') as f:
         json.dump([], f)
@@ -35,10 +36,16 @@ def is_valid_key(key):
         keys = json.load(f)
     return key in keys
 
+# ------------------------
+# Health Check
+# ------------------------
 @app.route('/health')
 def health():
-    return "API is running!"
+    return "✅ API is running!"
 
+# ------------------------
+# Generate Invoice (Protected)
+# ------------------------
 @app.route('/generate-invoice', methods=['POST'])
 def generate_invoice():
     api_key = request.headers.get('x-api-key')
@@ -71,6 +78,9 @@ def generate_invoice():
         'pdf_url': f"/invoice/{invoice_id}"
     })
 
+# ------------------------
+# Download Invoice PDF
+# ------------------------
 @app.route('/invoice/<invoice_id>', methods=['GET'])
 def get_invoice(invoice_id):
     filepath = os.path.join(PDF_FOLDER, f"{invoice_id}.pdf")
@@ -78,6 +88,9 @@ def get_invoice(invoice_id):
         return send_file(filepath, as_attachment=True)
     return jsonify({'error': 'Invoice not found'}), 404
 
+# ------------------------
+# Stripe Checkout
+# ------------------------
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
@@ -88,23 +101,26 @@ def create_checkout_session():
                 'price_data': {
                     'currency': 'usd',
                     'product_data': {'name': 'Invoice API Access'},
-                    'unit_amount': 500
+                    'unit_amount': 500  # $5
                 },
                 'quantity': 1
             }],
-            success_url='http://localhost:5000/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='http://localhost:5000/cancel'
+            success_url='https://invoice-api-2.onrender.com/success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url='https://invoice-api-2.onrender.com/cancel'
         )
         return jsonify({'checkout_url': session.url})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+# ------------------------
+# Success & Cancel Pages
+# ------------------------
 @app.route('/success')
 def success():
     new_key = generate_api_key()
     save_api_key(new_key)
     return f"""
-    Payment successful!<br><br>
+    ✅ Payment successful!<br><br>
     Your API key is:<br><br>
     <b>{new_key}</b><br><br>
     Save this key! You’ll need it to call <code>/generate-invoice</code>.<br>
@@ -114,8 +130,12 @@ def success():
 
 @app.route('/cancel')
 def cancel():
-    return "Payment was cancelled."
+    return "❌ Payment was cancelled."
 
+# ------------------------
+# Run the App for Render
+# ------------------------
 if __name__ == '__main__':
-    print("Visit http://127.0.0.1:5000/success to get your API key.")
-    app.run(debug=True)
+    print("➡️ API starting...")
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
