@@ -101,7 +101,7 @@ def create_checkout_session():
                 'price_data': {
                     'currency': 'usd',
                     'product_data': {'name': 'Invoice API Access'},
-                    'unit_amount': 500  # $5
+                    'unit_amount': 100  # $1
                 },
                 'quantity': 1
             }],
