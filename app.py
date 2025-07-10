@@ -6,8 +6,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from dotenv import load_dotenv
 import stripe
+from datetime import datetime
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
@@ -15,18 +16,22 @@ app = Flask(__name__)
 
 PDF_FOLDER = 'invoices'
 KEY_FILE = 'keys.json'
+USAGE_FILE = 'usage.json'
 os.makedirs(PDF_FOLDER, exist_ok=True)
 
-# Initialize keys.json if it doesn't exist
+# Initialize keys.json
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'w') as f:
         json.dump([], f)
 
-# Generate a new API key
+# Initialize usage.json
+if not os.path.exists(USAGE_FILE):
+    with open(USAGE_FILE, 'w') as f:
+        json.dump({}, f)
+
 def generate_api_key():
     return str(uuid.uuid4())
 
-# Save new API key to keys.json
 def save_api_key(new_key):
     with open(KEY_FILE, 'r') as f:
         keys = json.load(f)
@@ -34,11 +39,37 @@ def save_api_key(new_key):
     with open(KEY_FILE, 'w') as f:
         json.dump(keys, f)
 
-# Check if API key is valid
 def is_valid_key(key):
     with open(KEY_FILE, 'r') as f:
         keys = json.load(f)
     return key in keys
+
+def increment_usage(key):
+    today = datetime.now().strftime('%Y-%m-%d')
+    with open(USAGE_FILE, 'r') as f:
+        usage = json.load(f)
+
+    if key not in usage or usage[key].get('date') != today:
+        usage[key] = {'date': today, 'count': 1}
+    else:
+        usage[key]['count'] += 1
+
+    with open(USAGE_FILE, 'w') as f:
+        json.dump(usage, f)
+
+    return usage[key]['count']
+
+# ------------------------
+# Root Route
+# ------------------------
+@app.route('/')
+def home():
+    return """
+    👋 Welcome to the Invoice API!<br>
+    Use the following endpoints:<br>
+    - <a href='/health'>/health</a><br>
+    - <a href='/create-checkout-session'>/create-checkout-session</a><br>
+    """
 
 # ------------------------
 # Health Check Route
@@ -55,6 +86,10 @@ def generate_invoice():
     api_key = request.headers.get('x-api-key')
     if not api_key or not is_valid_key(api_key):
         return jsonify({'error': 'Unauthorized. Missing or invalid API key.'}), 401
+
+    count = increment_usage(api_key)
+    if count > 10:
+        return jsonify({'error': 'Daily limit reached (10 invoices per day).'}), 429
 
     data = request.json
     invoice_id = str(uuid.uuid4())
@@ -83,7 +118,7 @@ def generate_invoice():
     })
 
 # ------------------------
-# Download Invoice PDF
+# Download Invoice
 # ------------------------
 @app.route('/invoice/<invoice_id>', methods=['GET'])
 def get_invoice(invoice_id):
@@ -93,7 +128,7 @@ def get_invoice(invoice_id):
     return jsonify({'error': 'Invoice not found'}), 404
 
 # ------------------------
-# Create Stripe Checkout Session
+# Stripe Checkout
 # ------------------------
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
@@ -117,7 +152,7 @@ def create_checkout_session():
         return jsonify({'error': str(e)}), 400
 
 # ------------------------
-# Success Route: Generate API Key
+# Payment Success Page
 # ------------------------
 @app.route('/success')
 def success():
@@ -133,14 +168,82 @@ def success():
     """
 
 # ------------------------
-# Cancel Route
+# Payment Cancelled
 # ------------------------
 @app.route('/cancel')
 def cancel():
     return "❌ Payment was cancelled."
 
 # ------------------------
-# Start the Flask App
+# API Documentation Route
+# ------------------------
+@app.route('/docs')
+def docs():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Invoice API Docs</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 2rem; background: #f9f9f9; color: #333; }
+        h1 { color: #0d6efd; }
+        code, pre { background: #eee; padding: 1rem; border-radius: 5px; display: block; white-space: pre-wrap; }
+        a { color: #0d6efd; }
+      </style>
+    </head>
+    <body>
+      <h1>📄 Invoice API Documentation</h1>
+      <p>This API allows you to generate downloadable PDF invoices via HTTP requests.</p>
+
+      <h2>🔐 Get Your API Key</h2>
+      <p>Visit <a href='https://invoice-api-3.onrender.com/create-checkout-session'>this payment link</a> to pay $1 and receive your API key.</p>
+
+      <h2>📤 POST /generate-invoice</h2>
+      <p>Send a JSON payload to create a new invoice.</p>
+      <pre>
+POST https://invoice-api-3.onrender.com/generate-invoice
+Headers:
+  Content-Type: application/json
+  x-api-key: YOUR_API_KEY
+
+Body:
+{
+  "invoice_number": "INV-001",
+  "client_name": "John Doe",
+  "client_email": "john@example.com",
+  "due_date": "2025-07-31",
+  "items": [
+    { "description": "Design", "quantity": 1, "unit_price": 100 },
+    { "description": "Hosting", "quantity": 1, "unit_price": 50 }
+  ]
+}
+      </pre>
+
+      <h2>📥 GET /invoice/&lt;invoice_id&gt;</h2>
+      <p>After generating the invoice, use the returned <code>invoice_id</code> to download the PDF:</p>
+      <pre>
+GET https://invoice-api-3.onrender.com/invoice/<invoice_id>
+      </pre>
+
+      <h2>✅ Sample Response</h2>
+      <pre>
+{
+  "invoice_id": "c277bbb5-7ada-49b4-a3d8-48cfaa437880",
+  "pdf_url": "/invoice/c277bbb5-7ada-49b4-a3d8-48cfaa437880"
+}
+      </pre>
+
+      <hr>
+      <footer>
+        &copy; 2025 Invoice API — Powered by Mohamed Ait Benamara
+      </footer>
+    </body>
+    </html>
+    """
+
+
+# ------------------------
+# Run the App
 # ------------------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
