@@ -279,6 +279,77 @@ GET https://invoice-api-3.onrender.com/invoice/<invoice_id>
     </html>
     """
 
+@app.route('/dashboard')
+def dashboard():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Dashboard</title>
+      <style>
+        body { font-family: Arial, sans-serif; background: #f8f9fa; padding: 2rem; }
+        h1 { color: #0d6efd; }
+        label { display: block; margin: 1rem 0 0.5rem; }
+        input, textarea { width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 0.75rem 1.5rem; background: #0d6efd; color: white; border: none; border-radius: 4px; }
+        .note { font-size: 0.9rem; color: #555; margin-top: 2rem; }
+      </style>
+    </head>
+    <body>
+      <h1>🧾 Invoice API Dashboard</h1>
+      <p>Use the form below to test your invoice generation.</p>
+
+      <form id="invoiceForm">
+        <label>API Key:</label>
+        <input type="text" id="apiKey" placeholder="Enter your API key here" required />
+
+        <label>Invoice JSON:</label>
+        <textarea id="jsonBody" rows="12" placeholder='{
+  "invoice_number": "INV-001",
+  "client_name": "John Doe",
+  "client_email": "john@example.com",
+  "due_date": "2025-07-31",
+  "items": [
+    { "description": "Design", "quantity": 1, "unit_price": 100 },
+    { "description": "Hosting", "quantity": 1, "unit_price": 50 }
+  ]
+}'></textarea>
+
+        <button type="submit">Generate Invoice</button>
+      </form>
+
+      <div class="note" id="responseNote"></div>
+
+      <script>
+        const form = document.getElementById('invoiceForm');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const key = document.getElementById('apiKey').value;
+          const body = document.getElementById('jsonBody').value;
+
+          const res = await fetch('/generate-invoice', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': key
+            },
+            body: body
+          });
+
+          const data = await res.json();
+          const note = document.getElementById('responseNote');
+          if (res.ok) {
+            note.innerHTML = `<p>✅ Invoice generated! <a href="${data.pdf_url}" target="_blank">Download PDF</a></p>`;
+          } else {
+            note.innerHTML = `<p style="color: red;">❌ ${data.error}</p>`;
+          }
+        });
+      </script>
+    </body>
+    </html>
+    """
+
+
 
 # ------------------------
 # Run the App
