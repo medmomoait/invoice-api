@@ -118,6 +118,44 @@ def generate_invoice():
     })
 
 # ------------------------
+# Demo Invoice (No API Key Needed)
+# ------------------------
+@app.route('/demo-invoice', methods=['POST'])
+def demo_invoice():
+    data = request.json
+    invoice_id = str(uuid.uuid4())
+    filename = os.path.join(PDF_FOLDER, f"demo_{invoice_id}.pdf")
+
+    c = canvas.Canvas(filename, pagesize=A4)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(100, 800, f"DEMO Invoice #: {data['invoice_number']}")
+    c.setFont("Helvetica", 12)
+    c.drawString(100, 780, f"Client: {data['client_name']}")
+    c.drawString(100, 760, f"Email: {data['client_email']}")
+    c.drawString(100, 740, f"Due Date: {data['due_date']}")
+
+    y = 700
+    total = 0
+    for item in data['items']:
+        line = f"{item['description']} - {item['quantity']} x ${item['unit_price']}"
+        c.drawString(100, y, line)
+        total += item['quantity'] * item['unit_price']
+        y -= 20
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(100, y - 20, f"Total: ${total}")
+    c.setFillColorRGB(1, 0, 0)  # red
+    c.setFont("Helvetica-Bold", 50)
+    c.drawString(150, 400, "DEMO")
+    c.save()
+
+    return jsonify({
+        'invoice_id': invoice_id,
+        'pdf_url': f"/invoice/demo_{invoice_id}"
+    })
+
+
+# ------------------------
 # Download Invoice
 # ------------------------
 @app.route('/invoice/<invoice_id>', methods=['GET'])
