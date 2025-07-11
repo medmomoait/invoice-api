@@ -7,6 +7,11 @@ from reportlab.lib.pagesizes import A4
 from dotenv import load_dotenv
 import stripe
 from datetime import datetime
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email.mime.text import MIMEText
+
 
 # Load environment variables
 load_dotenv()
@@ -81,6 +86,31 @@ def health():
 # ------------------------
 # Generate Invoice (Protected)
 # ------------------------
+def send_invoice_email(to_email, pdf_path, invoice_number):
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+
+    msg = MIMEMultipart()
+    msg["From"] = smtp_user
+    msg["To"] = to_email
+    msg["Subject"] = f"Your Invoice #{invoice_number}"
+
+    body = MIMEText(f"Hello,\n\nPlease find attached your invoice #{invoice_number}.\n\nThank you!", "plain")
+    msg.attach(body)
+
+    with open(pdf_path, "rb") as f:
+        part = MIMEApplication(f.read(), Name=os.path.basename(pdf_path))
+        part["Content-Disposition"] = f'attachment; filename="{os.path.basename(pdf_path)}"'
+        msg.attach(part)
+
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+
+
 @app.route('/generate-invoice', methods=['POST'])
 def generate_invoice():
     api_key = request.headers.get('x-api-key')
@@ -112,9 +142,16 @@ def generate_invoice():
     c.drawString(100, y - 20, f"Total: ${total}")
     c.save()
 
+    # Send the email
+    try:
+        send_invoice_email(data['client_email'], filename, data['invoice_number'])
+    except Exception as e:
+        return jsonify({'error': f'Invoice generated, but email failed to send: {str(e)}'}), 500
+
     return jsonify({
         'invoice_id': invoice_id,
         'pdf_url': f"/invoice/{invoice_id}"
+
     })
 
 # ------------------------
